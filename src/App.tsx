@@ -16,13 +16,34 @@ import { AddRequestModal } from './components/AddRequestModal';
 import { DownloadModal } from './components/DownloadModal';
 import { ClerkHelperModal } from './components/ClerkHelperModal';
 import { PrintSheet } from './components/PrintSheet';
+import { ShareModal, parseSharedDataFromUrl } from './components/ShareModal';
+import { Check } from 'lucide-react';
 
-const STORAGE_KEY_CURRENCY = 'japan_haul_currency_v3';
+const STORAGE_KEY_REQUESTS = 'japan_haul_requests_v4';
+const STORAGE_KEY_PURCHASED = 'japan_haul_purchased_v4';
+const STORAGE_KEY_CURRENCY = 'japan_haul_currency_v4';
 
 export default function App() {
-  const [requests, setRequests] = useState<ShoppingItemRequest[]>([]);
-  const [purchasedMap, setPurchasedMap] = useState<Record<string, boolean>>({});
-  const [isLiveConnected, setIsLiveConnected] = useState(false);
+  const [requests, setRequests] = useState<ShoppingItemRequest[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_REQUESTS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+
+  const [purchasedMap, setPurchasedMap] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_PURCHASED);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {};
+  });
+
+  const [sharedImportNotice, setSharedImportNotice] = useState<string | null>(null);
 
   // Selected currency
   const [selectedCurrency, setSelectedCurrency] = useState<CurrencyCode>(() => {
@@ -41,9 +62,31 @@ export default function App() {
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [clerkItem, setClerkItem] = useState<ConsolidatedItem | null>(null);
 
-  // Fetch from shared backend server
+  // 1. Check if opened via a Share Link from a colleague!
+  useEffect(() => {
+    const sharedData = parseSharedDataFromUrl();
+    if (sharedData && sharedData.length > 0) {
+      setRequests((prev) => {
+        // Merge without exact duplicates
+        const existingNames = new Set(prev.map((p) => `${p.productName}__${p.requesterName}`));
+        const newOnes = sharedData.filter(
+          (s) => !existingNames.has(`${s.productName}__${s.requesterName}`)
+        );
+        const merged = [...newOnes, ...prev];
+        return merged;
+      });
+
+      setSharedImportNotice(`🎉 Successfully loaded ${sharedData.length} items from your colleague's link!`);
+      // Clean up URL hash cleanly without reload
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      setTimeout(() => setSharedImportNotice(null), 5000);
+    }
+  }, []);
+
+  // 2. Fetch from shared backend server if running
   const fetchSharedData = useCallback(async () => {
     try {
       const [reqRes, purRes] = await Promise.all([
@@ -53,30 +96,38 @@ export default function App() {
 
       if (reqRes.ok) {
         const data = await reqRes.json();
-        setRequests(data);
-        setIsLiveConnected(true);
+        if (Array.isArray(data) && data.length > 0) {
+          setRequests(data);
+        }
       }
       if (purRes.ok) {
         const purData = await purRes.json();
         setPurchasedMap(purData);
       }
-    } catch (err) {
-      console.warn('Backend sync notice:', err);
+    } catch {
+      // Local fallback
     }
   }, []);
 
-  // Poll shared server every 3s and when tab gains focus so all colleagues stay in sync
+  // Sync with server if available
   useEffect(() => {
     fetchSharedData();
-    const interval = setInterval(fetchSharedData, 3000);
-    const onFocus = () => fetchSharedData();
-    window.addEventListener('focus', onFocus);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', onFocus);
-    };
+    const interval = setInterval(fetchSharedData, 4000);
+    return () => clearInterval(interval);
   }, [fetchSharedData]);
+
+  // Persist locally
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_REQUESTS, JSON.stringify(requests));
+    } catch {}
+  }, [requests]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_PURCHASED, JSON.stringify(purchasedMap));
+    } catch {}
+  }, [purchasedMap]);
 
   useEffect(() => {
     try {
@@ -106,7 +157,7 @@ export default function App() {
     return Array.from(new Set(requests.map((r) => r.requesterName))).sort();
   }, [requests]);
 
-  // Handlers for shared operations
+  // Handlers
   const handleTogglePurchased = async (itemId: string) => {
     const nextVal = !purchasedMap[itemId];
     setPurchasedMap((prev) => ({
@@ -120,9 +171,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isPurchased: nextVal }),
       });
-    } catch (err) {
-      console.error('Failed to sync purchased status to server:', err);
-    }
+    } catch {}
   };
 
   const handleAddRequest = async (newReqData: Omit<ShoppingItemRequest, 'id' | 'createdAt'>) => {
@@ -133,7 +182,6 @@ export default function App() {
       createdAt: new Date().toISOString(),
     };
 
-    // Optimistic UI update
     setRequests((prev) => [newRequest, ...prev]);
 
     try {
@@ -146,9 +194,7 @@ export default function App() {
         const saved = await res.json();
         setRequests((prev) => prev.map((item) => (item.id === tempId ? saved : item)));
       }
-    } catch (err) {
-      console.error('Failed to save to shared backend:', err);
-    }
+    } catch {}
   };
 
   const handleDeleteRequest = async (requestId: string) => {
@@ -157,32 +203,30 @@ export default function App() {
       await fetch(`/api/requests/${encodeURIComponent(requestId)}`, {
         method: 'DELETE',
       });
-    } catch (err) {
-      console.error('Failed to delete on shared backend:', err);
-    }
+    } catch {}
   };
 
   const handleClearAll = async () => {
-    if (window.confirm('Are you sure you want to clear all items from the shared list?')) {
+    if (window.confirm('Are you sure you want to clear all items from the list?')) {
       setRequests([]);
       setPurchasedMap({});
       try {
         await fetch('/api/requests', { method: 'DELETE' });
-      } catch (err) {
-        console.error('Failed to clear list on shared backend:', err);
-      }
+      } catch {}
     }
   };
 
   const handleLoadSampleData = async () => {
-    for (const item of INITIAL_REQUESTS) {
-      await fetch('/api/requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(item),
-      });
-    }
-    fetchSharedData();
+    setRequests(INITIAL_REQUESTS);
+    try {
+      for (const item of INITIAL_REQUESTS) {
+        await fetch('/api/requests', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item),
+        });
+      }
+    } catch {}
   };
 
   const handleTriggerPrint = () => {
@@ -197,9 +241,18 @@ export default function App() {
         setActiveTab={setActiveTab}
         onOpenAddModal={() => setIsAddModalOpen(true)}
         onOpenDownloadModal={() => setIsDownloadModalOpen(true)}
+        onOpenShareModal={() => setIsShareModalOpen(true)}
         consolidatedCount={consolidatedItems.length}
         totalUnitsCount={totalUnits}
       />
+
+      {/* Shared import notification toast */}
+      {sharedImportNotice && (
+        <div className="bg-emerald-600 text-white px-4 py-2.5 text-center text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 shadow-sm animate-in fade-in">
+          <Check className="w-4 h-4" />
+          <span>{sharedImportNotice}</span>
+        </div>
+      )}
 
       {/* Hero Overview & Tabular Metrics Bar */}
       <StatsBanner
@@ -249,16 +302,18 @@ export default function App() {
           <div className="flex items-center gap-2">
             <span className="font-semibold text-slate-700">Japan Haul</span>
             <span>·</span>
-            <span className="inline-flex items-center gap-1.5 text-emerald-600 font-medium">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              Shared Live Server Synced
-            </span>
+            <button
+              onClick={() => setIsShareModalOpen(true)}
+              className="text-rose-600 font-semibold hover:underline cursor-pointer"
+            >
+              Share with Colleagues
+            </button>
           </div>
           <div className="flex items-center gap-4">
             {consolidatedItems.length > 0 && (
               <button
                 onClick={() => setIsDownloadModalOpen(true)}
-                className="text-slate-600 hover:text-slate-900 hover:underline"
+                className="text-slate-600 hover:text-slate-900 hover:underline cursor-pointer"
               >
                 Export / Download List
               </button>
@@ -266,14 +321,14 @@ export default function App() {
             {consolidatedItems.length > 0 ? (
               <button
                 onClick={handleClearAll}
-                className="text-rose-600 hover:text-rose-800 hover:underline"
+                className="text-rose-600 hover:text-rose-800 hover:underline cursor-pointer"
               >
                 Clear All
               </button>
             ) : (
               <button
                 onClick={handleLoadSampleData}
-                className="text-slate-600 hover:text-slate-900 hover:underline"
+                className="text-slate-600 hover:text-slate-900 hover:underline cursor-pointer"
               >
                 Load Sample Data
               </button>
@@ -296,6 +351,13 @@ export default function App() {
         items={consolidatedItems}
         selectedCurrency={selectedCurrency}
         onTriggerPrint={handleTriggerPrint}
+      />
+
+      <ShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        requests={requests}
+        consolidatedItems={consolidatedItems}
       />
 
       <ClerkHelperModal
