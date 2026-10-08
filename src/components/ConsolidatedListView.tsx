@@ -3,19 +3,14 @@ import { ConsolidatedItem, CurrencyCode, StoreCategory } from '../types';
 import { STORE_CATEGORIES } from '../data/storeCategories';
 import { formatCurrency } from '../utils/currency';
 import {
-  CheckCircle2,
-  Circle,
+  Check,
   Eye,
   Search,
-  Filter,
-  Check,
-  Tag,
-  Building,
   Store,
   LayoutGrid,
   List,
-  Sparkles,
-  Info,
+  Plus,
+  ShoppingBag,
 } from 'lucide-react';
 
 interface ConsolidatedListViewProps {
@@ -37,6 +32,16 @@ export const ConsolidatedListView: React.FC<ConsolidatedListViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'bought'>('all');
+
+  // Check unique stores present in items
+  const uniqueStores = useMemo(() => {
+    return Array.from(new Set(items.map((i) => i.category))).filter((cat) => cat !== 'other');
+  }, [items]);
+
+  // Check if any items have price specified
+  const hasAnyPrices = useMemo(() => {
+    return items.some((i) => i.estimatedPriceJpy > 0);
+  }, [items]);
 
   // Filter items
   const filteredItems = useMemo(() => {
@@ -64,17 +69,31 @@ export const ConsolidatedListView: React.FC<ConsolidatedListViewProps> = ({
     });
   }, [items, selectedStore, statusFilter, searchQuery]);
 
-  // Calculate store stats for tax-free check
-  const selectedStoreInfo = selectedStore !== 'all' ? STORE_CATEGORIES[selectedStore as StoreCategory] : null;
-  const storeSubtotalJpy = useMemo(() => {
-    if (selectedStore === 'all') return 0;
-    return items
-      .filter((i) => i.category === selectedStore)
-      .reduce((sum, i) => sum + i.estimatedPriceJpy * i.totalQuantity, 0);
-  }, [items, selectedStore]);
-
-  const taxFreeThreshold = 5500;
-  const qualifiesTaxFree = storeSubtotalJpy >= taxFreeThreshold;
+  // If entire list is empty, show dedicated clean empty state
+  if (items.length === 0) {
+    return (
+      <div className="bg-white rounded-3xl border border-slate-200/80 p-10 sm:p-16 text-center shadow-xs">
+        <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-rose-100 shadow-xs">
+          <ShoppingBag className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+          Your Japan Shopping List is Empty
+        </h2>
+        <p className="text-sm text-slate-600 max-w-md mx-auto mt-2 leading-relaxed">
+          Start adding requests from friends and family! When different people submit the same product, it will automatically combine their quantities together.
+        </p>
+        <div className="mt-6 flex justify-center">
+          <button
+            onClick={onOpenAddModal}
+            className="px-6 py-3 text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors inline-flex items-center gap-2 shadow-sm shadow-rose-200 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add First Item</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -87,7 +106,7 @@ export const ConsolidatedListView: React.FC<ConsolidatedListViewProps> = ({
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Search products, Japanese names, or requesters (e.g. Sarah)..."
+              placeholder="Search products, requesters, or remarks..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-4 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white transition-all"
@@ -166,70 +185,46 @@ export const ConsolidatedListView: React.FC<ConsolidatedListViewProps> = ({
           </div>
         </div>
 
-        {/* Store Category Filter Tabs */}
-        <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-          <span className="text-slate-400 font-medium whitespace-nowrap mr-1 flex items-center gap-1">
-            <Store className="w-3.5 h-3.5" />
-            Store:
-          </span>
-          <button
-            onClick={() => setSelectedStore('all')}
-            className={`px-3 py-1 rounded-lg transition-colors whitespace-nowrap font-medium ${
-              selectedStore === 'all'
-                ? 'bg-slate-900 text-white'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            All Stores
-          </button>
-          {Object.values(STORE_CATEGORIES).map((cat) => {
-            const count = items.filter((i) => i.category === cat.id).length;
-            if (count === 0 && selectedStore !== cat.id) return null; // hide stores with 0 items for cleanliness
-            return (
-              <button
-                key={cat.id}
-                onClick={() => setSelectedStore(cat.id)}
-                className={`px-3 py-1 rounded-lg transition-colors whitespace-nowrap font-medium flex items-center gap-1.5 ${
-                  selectedStore === cat.id
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                <span>{cat.name}</span>
-                <span className="font-mono text-[11px] opacity-75">({count})</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Tax-Free Status Alert for Specific Stores */}
-        {selectedStore !== 'all' && selectedStoreInfo?.taxFreeEligible && (
-          <div
-            className={`p-3 rounded-xl border text-xs flex items-center justify-between transition-colors ${
-              qualifiesTaxFree
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                : 'bg-amber-50 border-amber-200 text-amber-900'
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <span className="font-bold">
-                {selectedStoreInfo.name} Subtotal: ¥{storeSubtotalJpy.toLocaleString()}
-              </span>
-              <span aria-hidden="true">·</span>
-              <span>
-                {qualifiesTaxFree
-                  ? '🎉 Reached ¥5,500 Tax-Free threshold! Save 10% consumption tax at the counter with your passport!'
-                  : `Need ¥${(taxFreeThreshold - storeSubtotalJpy).toLocaleString()} more to reach ¥5,500 Tax-Free exemption.`}
-              </span>
-            </div>
-            <span className="font-mono font-semibold text-[11px]">
-              {formatCurrency(storeSubtotalJpy, selectedCurrency)}
+        {/* Store Category Filter Tabs (only if multiple stores exist) */}
+        {uniqueStores.length > 1 && (
+          <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+            <span className="text-slate-400 font-medium whitespace-nowrap mr-1 flex items-center gap-1">
+              <Store className="w-3.5 h-3.5" />
+              Store:
             </span>
+            <button
+              onClick={() => setSelectedStore('all')}
+              className={`px-3 py-1 rounded-lg transition-colors whitespace-nowrap font-medium ${
+                selectedStore === 'all'
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              All Stores
+            </button>
+            {uniqueStores.map((catKey) => {
+              const cat = STORE_CATEGORIES[catKey];
+              const count = items.filter((i) => i.category === catKey).length;
+              return (
+                <button
+                  key={catKey}
+                  onClick={() => setSelectedStore(catKey)}
+                  className={`px-3 py-1 rounded-lg transition-colors whitespace-nowrap font-medium flex items-center gap-1.5 ${
+                    selectedStore === catKey
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>{cat?.name || catKey}</span>
+                  <span className="font-mono text-[11px] opacity-75">({count})</span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
 
-      {/* Empty State */}
+      {/* Empty State after search filtering */}
       {filteredItems.length === 0 && (
         <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center space-y-4">
           <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-slate-400">
@@ -238,16 +233,14 @@ export const ConsolidatedListView: React.FC<ConsolidatedListViewProps> = ({
           <div className="space-y-1">
             <h3 className="text-base font-bold text-slate-800">No matching shopping items</h3>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
-              {searchQuery
-                ? `No items found matching "${searchQuery}". Try a different keyword.`
-                : 'No items in this store category yet.'}
+              No items found matching your current filter.
             </p>
           </div>
           <button
             onClick={onOpenAddModal}
             className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors inline-flex items-center gap-1.5"
           >
-            Submit an Item
+            Add an Item
           </button>
         </div>
       )}
@@ -257,6 +250,7 @@ export const ConsolidatedListView: React.FC<ConsolidatedListViewProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredItems.map((item) => {
             const storeInfo = STORE_CATEGORIES[item.category];
+            const hasPrice = item.estimatedPriceJpy > 0;
             const totalItemCostJpy = item.estimatedPriceJpy * item.totalQuantity;
 
             return (
@@ -281,7 +275,7 @@ export const ConsolidatedListView: React.FC<ConsolidatedListViewProps> = ({
                     />
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-50">
-                      <Store className="w-10 h-10 stroke-[1.5] mb-1" />
+                      <ShoppingBag className="w-10 h-10 stroke-[1.5] mb-1" />
                       <span className="text-[11px]">No photo</span>
                     </div>
                   )}
@@ -312,18 +306,20 @@ export const ConsolidatedListView: React.FC<ConsolidatedListViewProps> = ({
                     </button>
                   </div>
 
-                  {/* Japanese store overlay kicker */}
-                  <div className="absolute bottom-2 left-2 pointer-events-none">
-                    <span className="bg-white/90 backdrop-blur-md text-slate-700 text-[11px] font-medium px-2 py-0.5 rounded shadow-xs">
-                      {storeInfo?.name || item.category}
-                    </span>
-                  </div>
+                  {/* Store badge if not "other" */}
+                  {item.category !== 'other' && (
+                    <div className="absolute bottom-2 left-2 pointer-events-none">
+                      <span className="bg-white/90 backdrop-blur-md text-slate-700 text-[11px] font-medium px-2 py-0.5 rounded shadow-xs">
+                        {storeInfo?.name || item.category}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Card Body */}
                 <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
                   <div className="space-y-1.5">
-                    {/* Japanese text kicker */}
+                    {/* Japanese text if provided */}
                     {item.japaneseName && (
                       <p className="text-xs text-rose-700 font-medium line-clamp-1">
                         {item.japaneseName}
@@ -341,19 +337,21 @@ export const ConsolidatedListView: React.FC<ConsolidatedListViewProps> = ({
                       {item.productName}
                     </h3>
 
-                    {/* Price in JPY & Converted */}
-                    <div className="flex items-baseline gap-2 pt-1">
-                      <span className="text-sm font-bold text-slate-900 tabular-nums">
-                        ¥{item.estimatedPriceJpy.toLocaleString()} each
-                      </span>
-                      <span className="text-xs text-slate-500 tabular-nums">
-                        · Total: ¥{totalItemCostJpy.toLocaleString()} (
-                        {formatCurrency(totalItemCostJpy, selectedCurrency)})
-                      </span>
-                    </div>
+                    {/* Price if set */}
+                    {hasPrice && (
+                      <div className="flex items-baseline gap-2 pt-1">
+                        <span className="text-sm font-bold text-slate-900 tabular-nums">
+                          ¥{item.estimatedPriceJpy.toLocaleString()} each
+                        </span>
+                        <span className="text-xs text-slate-500 tabular-nums">
+                          · Total: ¥{totalItemCostJpy.toLocaleString()} (
+                          {formatCurrency(totalItemCostJpy, selectedCurrency)})
+                        </span>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Consolidated Requester Breakdown (THE CORE REQUIREMENT) */}
+                  {/* Consolidated Requester Breakdown */}
                   <div className="pt-2 border-t border-slate-100 space-y-1.5">
                     <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
                       <span>Requesters Breakdown:</span>
@@ -366,28 +364,19 @@ export const ConsolidatedListView: React.FC<ConsolidatedListViewProps> = ({
                       {item.requesters.map((r, idx) => (
                         <div
                           key={`${r.requestId}-${idx}`}
-                          className={`text-xs px-2 py-0.5 rounded-md flex items-center gap-1 border ${
-                            r.priority === 'must_buy'
-                              ? 'bg-rose-50/70 border-rose-200/80 text-rose-900'
-                              : 'bg-slate-50 border-slate-200 text-slate-700'
-                          }`}
-                          title={r.notes ? `Note: ${r.notes}` : undefined}
+                          className="text-xs px-2.5 py-1 rounded-lg flex items-center gap-1.5 border bg-slate-50 border-slate-200 text-slate-800"
+                          title={r.notes ? `Remarks: ${r.notes}` : undefined}
                         >
                           <span className="font-semibold">{r.requesterName}</span>
                           <span className="font-mono font-bold text-rose-600">×{r.quantity}</span>
-                          {r.priority === 'must_buy' && (
-                            <span className="text-[10px] text-rose-500 font-bold" title="Must Buy">
-                              ★
-                            </span>
-                          )}
                         </div>
                       ))}
                     </div>
 
-                    {/* Notes if present */}
+                    {/* Remarks if present */}
                     {item.notesSummary && (
                       <p className="text-[11px] text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-100 line-clamp-2">
-                        <span className="font-medium text-slate-700">Notes: </span>
+                        <span className="font-medium text-slate-700">Remarks: </span>
                         {item.notesSummary}
                       </p>
                     )}
@@ -399,10 +388,10 @@ export const ConsolidatedListView: React.FC<ConsolidatedListViewProps> = ({
                       type="button"
                       onClick={() => onOpenClerkHelper(item)}
                       className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors flex items-center gap-1.5"
-                      title="Show large Japanese product card to Japanese store staff"
+                      title="Show large product card to Japanese store staff"
                     >
                       <Eye className="w-3.5 h-3.5 text-slate-500" />
-                      <span>Show Clerk (店員)</span>
+                      <span>Show Clerk</span>
                     </button>
 
                     <button
@@ -440,20 +429,15 @@ export const ConsolidatedListView: React.FC<ConsolidatedListViewProps> = ({
                 <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-semibold uppercase text-[11px] tracking-wider">
                   <th className="py-3 px-4 w-12 text-center">Status</th>
                   <th className="py-3 px-4 w-16">Photo</th>
-                  <th className="py-3 px-4">Product Name & Japanese</th>
-                  <th className="py-3 px-4">Store</th>
+                  <th className="py-3 px-4">Product Name</th>
                   <th className="py-3 px-4 text-center">Total Qty</th>
                   <th className="py-3 px-4">Requesters Breakdown</th>
-                  <th className="py-3 px-4 text-right">Unit Price</th>
-                  <th className="py-3 px-4 text-right">Total (JPY)</th>
+                  {hasAnyPrices && <th className="py-3 px-4 text-right">Price (JPY)</th>}
                   <th className="py-3 px-4 text-center">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredItems.map((item) => {
-                  const storeInfo = STORE_CATEGORIES[item.category];
-                  const totalCost = item.estimatedPriceJpy * item.totalQuantity;
-
                   return (
                     <tr
                       key={item.id}
@@ -486,19 +470,14 @@ export const ConsolidatedListView: React.FC<ConsolidatedListViewProps> = ({
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-slate-300">
-                              <Store className="w-5 h-5" />
+                              <ShoppingBag className="w-5 h-5" />
                             </div>
                           )}
                         </div>
                       </td>
 
-                      {/* Name & Japanese */}
+                      {/* Name */}
                       <td className="py-3 px-4 max-w-xs">
-                        {item.japaneseName && (
-                          <div className="text-[11px] text-rose-700 font-medium truncate">
-                            {item.japaneseName}
-                          </div>
-                        )}
                         <div
                           className={`font-semibold text-slate-900 ${
                             item.isPurchased ? 'line-through text-slate-500' : ''
@@ -508,14 +487,9 @@ export const ConsolidatedListView: React.FC<ConsolidatedListViewProps> = ({
                         </div>
                         {item.notesSummary && (
                           <div className="text-[11px] text-slate-500 truncate mt-0.5">
-                            {item.notesSummary}
+                            Remarks: {item.notesSummary}
                           </div>
                         )}
-                      </td>
-
-                      {/* Store */}
-                      <td className="py-3 px-4 whitespace-nowrap text-slate-700 font-medium">
-                        {storeInfo?.name || item.category}
                       </td>
 
                       {/* Total Quantity */}
@@ -539,15 +513,12 @@ export const ConsolidatedListView: React.FC<ConsolidatedListViewProps> = ({
                         </div>
                       </td>
 
-                      {/* Unit Price */}
-                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-700">
-                        ¥{item.estimatedPriceJpy.toLocaleString()}
-                      </td>
-
-                      {/* Total */}
-                      <td className="py-3 px-4 text-right font-mono font-bold tabular-nums text-slate-900 whitespace-nowrap">
-                        ¥{totalCost.toLocaleString()}
-                      </td>
+                      {/* Price if available */}
+                      {hasAnyPrices && (
+                        <td className="py-3 px-4 text-right font-mono font-bold tabular-nums text-slate-900 whitespace-nowrap">
+                          {item.estimatedPriceJpy > 0 ? `¥${item.estimatedPriceJpy.toLocaleString()}` : '-'}
+                        </td>
+                      )}
 
                       {/* Show Clerk Action */}
                       <td className="py-3 px-4 text-center whitespace-nowrap">

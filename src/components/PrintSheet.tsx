@@ -42,9 +42,11 @@ export const PrintSheet: React.FC<PrintSheetProps> = ({ items, selectedCurrency 
             <p className="font-bold">Date: {new Date().toLocaleDateString()}</p>
             <p className="text-neutral-600">Total Unique Items: {items.length}</p>
             <p className="text-neutral-600">Total Units: {totalUnits} pcs</p>
-            <p className="font-bold mt-1 text-sm">
-              Est. Total: ¥{totalCost.toLocaleString()} ({formatCurrency(totalCost, selectedCurrency)})
-            </p>
+            {totalCost > 0 && (
+              <p className="font-bold mt-1 text-sm">
+                Est. Total: ¥{totalCost.toLocaleString()} ({formatCurrency(totalCost, selectedCurrency)})
+              </p>
+            )}
           </div>
         </div>
 
@@ -150,7 +152,9 @@ export const PrintSheet: React.FC<PrintSheetProps> = ({ items, selectedCurrency 
 
                       {/* Est. Total */}
                       <td className="p-2 text-right align-middle font-mono font-bold text-xs whitespace-nowrap">
-                        ¥{(item.estimatedPriceJpy * item.totalQuantity).toLocaleString()}
+                        {item.estimatedPriceJpy > 0
+                          ? `¥${(item.estimatedPriceJpy * item.totalQuantity).toLocaleString()}`
+                          : '—'}
                       </td>
                     </tr>
                   ))}

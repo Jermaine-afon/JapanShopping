@@ -104,7 +104,9 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({
             <span className="font-semibold">{totalUnits}</span> total units
           </div>
           <div className="font-bold tabular-nums">
-            Est. ¥{totalCost.toLocaleString()} ({formatCurrency(totalCost, selectedCurrency)})
+            {totalCost > 0
+              ? `Est. ¥${totalCost.toLocaleString()} (${formatCurrency(totalCost, selectedCurrency)})`
+              : `${totalUnits} total units`}
           </div>
         </div>
 

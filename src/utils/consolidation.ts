@@ -169,18 +169,26 @@ export function generateTextSummary(items: ConsolidatedItem[]): string {
   text += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
   text += `Total Unique Products: ${items.length}\n`;
   text += `Total Units to Buy: ${totalUnits} pcs\n`;
-  text += `Est. Total Spend: ¥${totalCost.toLocaleString()} JPY\n\n`;
+  if (totalCost > 0) {
+    text += `Est. Total Spend: ¥${totalCost.toLocaleString()} JPY\n`;
+  }
+  text += `\n`;
 
   // Group by store
   const byStore: Record<StoreCategory, ConsolidatedItem[]> = {} as any;
   items.forEach((item) => {
-    if (!byStore[item.category]) byStore[item.category] = [];
-    byStore[item.category].push(item);
+    const cat = item.category || 'other';
+    if (!byStore[cat]) byStore[cat] = [];
+    byStore[cat].push(item);
   });
+
+  const hasMultipleStores = Object.keys(byStore).length > 1;
 
   Object.entries(byStore).forEach(([catKey, storeItems]) => {
     const storeInfo = STORE_CATEGORIES[catKey as StoreCategory];
-    text += `📍 ${storeInfo?.name || catKey} (${storeInfo?.japaneseName || ''})\n`;
+    if (hasMultipleStores && catKey !== 'other') {
+      text += `📍 ${storeInfo?.name || catKey}\n`;
+    }
     
     storeItems.forEach((item, idx) => {
       const checkbox = item.isPurchased ? '✅' : '⬜';
@@ -189,9 +197,13 @@ export function generateTextSummary(items: ConsolidatedItem[]): string {
       if (item.japaneseName) {
         text += `    JP: ${item.japaneseName}\n`;
       }
-      text += `    Qty: ${item.totalQuantity}x [${breakdown}] | ¥${item.estimatedPriceJpy.toLocaleString()} each\n`;
+      text += `    Qty: ${item.totalQuantity}x [${breakdown}]`;
+      if (item.estimatedPriceJpy > 0) {
+        text += ` | ¥${item.estimatedPriceJpy.toLocaleString()} each`;
+      }
+      text += `\n`;
       if (item.notesSummary) {
-        text += `    Note: ${item.notesSummary}\n`;
+        text += `    Remarks: ${item.notesSummary}\n`;
       }
       text += `\n`;
     });

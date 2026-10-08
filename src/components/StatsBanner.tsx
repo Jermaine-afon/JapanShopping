@@ -1,7 +1,7 @@
 import React from 'react';
 import { CurrencyCode } from '../types';
 import { formatCurrency, CURRENCIES } from '../utils/currency';
-import { CheckCircle2, RotateCcw, Sparkles } from 'lucide-react';
+import { Trash2, Sparkles, Plus, RotateCcw } from 'lucide-react';
 
 interface StatsBannerProps {
   consolidatedCount: number;
@@ -10,7 +10,9 @@ interface StatsBannerProps {
   purchasedCount: number;
   selectedCurrency: CurrencyCode;
   setSelectedCurrency: (curr: CurrencyCode) => void;
-  onResetDemoData: () => void;
+  onClearAll: () => void;
+  onLoadSampleData?: () => void;
+  onOpenAddModal: () => void;
 }
 
 export const StatsBanner: React.FC<StatsBannerProps> = ({
@@ -20,10 +22,11 @@ export const StatsBanner: React.FC<StatsBannerProps> = ({
   purchasedCount,
   selectedCurrency,
   setSelectedCurrency,
-  onResetDemoData,
+  onClearAll,
+  onLoadSampleData,
+  onOpenAddModal,
 }) => {
   const percentComplete = consolidatedCount > 0 ? Math.round((purchasedCount / consolidatedCount) * 100) : 0;
-  const estTaxSaved = Math.round(totalEstJpy * 0.1);
 
   return (
     <section className="bg-white border-b border-slate-200/90 py-5 px-4 sm:px-6 lg:px-8 no-print">
@@ -34,7 +37,7 @@ export const StatsBanner: React.FC<StatsBannerProps> = ({
             <div className="flex items-center gap-2 text-xs text-slate-500">
               <span className="font-semibold text-rose-600">Japan Trip 2026</span>
               <span aria-hidden="true">·</span>
-              <span>Buyer Shopping Concierge</span>
+              <span>Buyer Shopping Hub</span>
               <span aria-hidden="true">·</span>
               <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
                 <Sparkles className="w-3.5 h-3.5" />
@@ -45,36 +48,61 @@ export const StatsBanner: React.FC<StatsBannerProps> = ({
               Consolidated Japan Shopping List
             </h1>
             <p className="text-xs sm:text-sm text-slate-600 max-w-2xl">
-              All friends & family requests merged into a single consolidated checklist. Identical items are automatically aggregated with individual quantity breakdowns.
+              Submit items requested by friends and family. Identical products are automatically consolidated with combined quantities for easy shopping in Japan.
             </p>
           </div>
 
-          {/* Right Metrics & Currency Toggle */}
-          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-            {/* Currency Selector */}
-            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs">
-              <span className="text-slate-500 font-medium">Currency:</span>
-              <select
-                value={selectedCurrency}
-                onChange={(e) => setSelectedCurrency(e.target.value as CurrencyCode)}
-                className="bg-transparent font-semibold text-slate-800 focus:outline-none cursor-pointer"
-              >
-                {Object.keys(CURRENCIES).map((code) => (
-                  <option key={code} value={code}>
-                    {code} ({CURRENCIES[code as CurrencyCode].symbol})
-                  </option>
-                ))}
-              </select>
-            </div>
+          {/* Right Controls */}
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+            {/* Currency Selector (only if prices exist) */}
+            {totalEstJpy > 0 && (
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs">
+                <span className="text-slate-500 font-medium">Currency:</span>
+                <select
+                  value={selectedCurrency}
+                  onChange={(e) => setSelectedCurrency(e.target.value as CurrencyCode)}
+                  className="bg-transparent font-semibold text-slate-800 focus:outline-none cursor-pointer"
+                >
+                  {Object.keys(CURRENCIES).map((code) => (
+                    <option key={code} value={code}>
+                      {code} ({CURRENCIES[code as CurrencyCode].symbol})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-            {/* Reset Demo Data button */}
+            {/* Clear All button if items exist */}
+            {consolidatedCount > 0 && (
+              <button
+                onClick={onClearAll}
+                title="Clear all items from list"
+                className="px-2.5 py-1.5 text-xs text-slate-500 hover:text-rose-600 border border-slate-200 rounded-lg hover:bg-rose-50 hover:border-rose-200 transition-colors flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Clear List</span>
+              </button>
+            )}
+
+            {/* Load Sample Data button if list is empty */}
+            {consolidatedCount === 0 && onLoadSampleData && (
+              <button
+                onClick={onLoadSampleData}
+                title="Load sample requests to test merging"
+                className="px-2.5 py-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Load Sample Data</span>
+              </button>
+            )}
+
+            {/* Primary Add button */}
             <button
-              onClick={onResetDemoData}
-              title="Reset with sample Japan shopping data"
-              className="px-2.5 py-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-1.5"
+              onClick={onOpenAddModal}
+              className="px-3.5 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Reset Demo Data</span>
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Item</span>
             </button>
           </div>
         </div>
@@ -89,7 +117,7 @@ export const StatsBanner: React.FC<StatsBannerProps> = ({
               <span className="text-xl sm:text-2xl font-bold text-slate-900 tabular-nums">
                 {consolidatedCount}
               </span>
-              <span className="text-xs text-slate-500">unique items</span>
+              <span className="text-xs text-slate-500">items</span>
             </div>
           </div>
 
@@ -101,29 +129,25 @@ export const StatsBanner: React.FC<StatsBannerProps> = ({
               <span className="text-xl sm:text-2xl font-bold text-slate-900 tabular-nums">
                 {totalUnits}
               </span>
-              <span className="text-xs text-slate-500">units total</span>
+              <span className="text-xs text-slate-500">units</span>
             </div>
           </div>
 
           <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
             <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">
-              Est. Total Cost
+              Shopping Status
             </div>
             <div className="mt-1 flex items-baseline gap-2">
               <span className="text-xl sm:text-2xl font-bold text-slate-900 tabular-nums">
-                {formatCurrency(totalEstJpy, selectedCurrency)}
+                {purchasedCount}
               </span>
-              {selectedCurrency !== 'JPY' && (
-                <span className="text-xs text-slate-500 tabular-nums">
-                  (¥{totalEstJpy.toLocaleString()})
-                </span>
-              )}
+              <span className="text-xs text-slate-500">of {consolidatedCount} bought</span>
             </div>
           </div>
 
           <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
             <div className="flex items-center justify-between text-[11px] font-medium text-slate-500 uppercase tracking-wider">
-              <span>Shopping Progress</span>
+              <span>Progress</span>
               <span className="text-slate-700 font-semibold tabular-nums">{percentComplete}%</span>
             </div>
             <div className="mt-2 w-full bg-slate-200 rounded-full h-2 overflow-hidden">
@@ -133,8 +157,8 @@ export const StatsBanner: React.FC<StatsBannerProps> = ({
               />
             </div>
             <div className="mt-1 text-[11px] text-slate-500 flex items-center justify-between">
-              <span>{purchasedCount} of {consolidatedCount} bought</span>
-              <span className="text-emerald-700 font-medium">10% Tax-Free eligible</span>
+              <span>{consolidatedCount > 0 ? `${consolidatedCount - purchasedCount} remaining` : 'Empty list'}</span>
+              <span className="text-emerald-700 font-medium">Ready for Japan</span>
             </div>
           </div>
         </div>

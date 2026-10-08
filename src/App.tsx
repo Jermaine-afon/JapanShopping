@@ -17,25 +17,35 @@ import { DownloadModal } from './components/DownloadModal';
 import { ClerkHelperModal } from './components/ClerkHelperModal';
 import { PrintSheet } from './components/PrintSheet';
 
-const STORAGE_KEY_REQUESTS = 'japan_haul_requests_v1';
-const STORAGE_KEY_PURCHASED = 'japan_haul_purchased_v1';
-const STORAGE_KEY_CURRENCY = 'japan_haul_currency_v1';
+const STORAGE_KEY_REQUESTS = 'japan_haul_requests_v3';
+const STORAGE_KEY_PURCHASED = 'japan_haul_purchased_v3';
+const STORAGE_KEY_CURRENCY = 'japan_haul_currency_v3';
 
 export default function App() {
-  // Load initial requests from localStorage or sample data
+  // Clear any legacy demo data from previous sessions
+  useEffect(() => {
+    try {
+      localStorage.removeItem('japan_haul_requests_v1');
+      localStorage.removeItem('japan_haul_requests_v2');
+      localStorage.removeItem('japan_haul_purchased_v1');
+      localStorage.removeItem('japan_haul_purchased_v2');
+    } catch {}
+  }, []);
+
+  // Initialize with an empty list by default
   const [requests, setRequests] = useState<ShoppingItemRequest[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_REQUESTS);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       }
     } catch (e) {
       console.error('Failed to parse saved requests:', e);
     }
-    return INITIAL_REQUESTS;
+    return []; // Empty list
   });
 
   // Track purchased status per merged product id
@@ -104,7 +114,7 @@ export default function App() {
   }, [requests]);
 
   const totalEstJpy = useMemo(() => {
-    return requests.reduce((sum, r) => sum + r.estimatedPriceJpy * r.quantity, 0);
+    return requests.reduce((sum, r) => sum + (r.estimatedPriceJpy || 0) * r.quantity, 0);
   }, [requests]);
 
   const purchasedCount = useMemo(() => {
@@ -136,11 +146,20 @@ export default function App() {
     setRequests((prev) => prev.filter((r) => r.id !== requestId));
   };
 
-  const handleResetDemoData = () => {
-    if (window.confirm('Reset the list with initial sample Japan requests?')) {
-      setRequests(INITIAL_REQUESTS);
+  const handleClearAll = () => {
+    if (window.confirm('Are you sure you want to clear all items from the list?')) {
+      setRequests([]);
       setPurchasedMap({});
+      try {
+        localStorage.removeItem(STORAGE_KEY_REQUESTS);
+        localStorage.removeItem(STORAGE_KEY_PURCHASED);
+      } catch {}
     }
+  };
+
+  const handleLoadSampleData = () => {
+    setRequests(INITIAL_REQUESTS);
+    setPurchasedMap({});
   };
 
   const handleTriggerPrint = () => {
@@ -167,7 +186,9 @@ export default function App() {
         purchasedCount={purchasedCount}
         selectedCurrency={selectedCurrency}
         setSelectedCurrency={setSelectedCurrency}
-        onResetDemoData={handleResetDemoData}
+        onClearAll={handleClearAll}
+        onLoadSampleData={handleLoadSampleData}
+        onOpenAddModal={() => setIsAddModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -208,19 +229,29 @@ export default function App() {
             <span>Consolidated Travel Shopping Concierge</span>
           </div>
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => setIsDownloadModalOpen(true)}
-              className="text-slate-600 hover:text-slate-900 hover:underline"
-            >
-              Export / Download List
-            </button>
-            <span>·</span>
-            <button
-              onClick={handleResetDemoData}
-              className="text-slate-600 hover:text-slate-900 hover:underline"
-            >
-              Reset Sample Data
-            </button>
+            {consolidatedItems.length > 0 && (
+              <button
+                onClick={() => setIsDownloadModalOpen(true)}
+                className="text-slate-600 hover:text-slate-900 hover:underline"
+              >
+                Export / Download List
+              </button>
+            )}
+            {consolidatedItems.length > 0 ? (
+              <button
+                onClick={handleClearAll}
+                className="text-rose-600 hover:text-rose-800 hover:underline"
+              >
+                Clear All
+              </button>
+            ) : (
+              <button
+                onClick={handleLoadSampleData}
+                className="text-slate-600 hover:text-slate-900 hover:underline"
+              >
+                Load Sample Data
+              </button>
+            )}
           </div>
         </div>
       </footer>
