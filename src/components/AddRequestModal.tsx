@@ -28,9 +28,39 @@ export const AddRequestModal: React.FC<AddRequestModalProps> = ({
     if (file) {
       const reader = new FileReader();
       reader.onload = (event) => {
-        if (event.target?.result) {
-          setImageUrl(event.target.result as string);
-        }
+        const rawResult = event.target?.result as string;
+        if (!rawResult) return;
+
+        // Resize large camera photos so they fit smoothly in Firestore
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 600;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressed = canvas.toDataURL('image/jpeg', 0.75);
+            setImageUrl(compressed);
+          } else {
+            setImageUrl(rawResult);
+          }
+        };
+        img.src = rawResult;
       };
       reader.readAsDataURL(file);
     }

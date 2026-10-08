@@ -13,6 +13,16 @@ import { ShoppingItemRequest } from '../types';
 const REQUESTS_COLLECTION = 'shopping_requests';
 const PURCHASED_COLLECTION = 'purchased_states';
 
+function cleanPayload<T extends Record<string, any>>(obj: T): Record<string, any> {
+  const cleaned: Record<string, any> = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (val !== undefined && val !== null) {
+      cleaned[key] = val;
+    }
+  }
+  return cleaned;
+}
+
 /**
  * Listens to live real-time updates for shopping requests across all colleagues.
  */
@@ -30,6 +40,8 @@ export function subscribeShoppingRequests(
         items.push({
           ...data,
           id: docSnap.id,
+          imageUrl: data.imageUrl || undefined,
+          notes: data.notes || undefined,
         });
       });
       // Sort newest first
@@ -70,13 +82,23 @@ export function subscribePurchasedStates(
 
 /**
  * Adds a new shopping request to the shared cloud database.
+ * Cleans undefined values to avoid Firestore rejection.
  */
 export async function addShoppingRequestToCloud(request: ShoppingItemRequest): Promise<void> {
   const docRef = doc(db, REQUESTS_COLLECTION, request.id);
-  await setDoc(docRef, {
-    ...request,
+  const payload = cleanPayload({
+    id: request.id,
+    productName: request.productName,
+    quantity: request.quantity,
+    requesterName: request.requesterName,
+    imageUrl: request.imageUrl || '',
+    notes: request.notes || '',
+    category: request.category || 'other',
+    estimatedPriceJpy: request.estimatedPriceJpy || 0,
+    priority: request.priority || 'must_buy',
     createdAt: request.createdAt || new Date().toISOString(),
   });
+  await setDoc(docRef, payload);
 }
 
 /**
@@ -92,11 +114,12 @@ export async function deleteShoppingRequestFromCloud(id: string): Promise<void> 
  */
 export async function setPurchasedStateInCloud(itemId: string, isPurchased: boolean): Promise<void> {
   const docRef = doc(db, PURCHASED_COLLECTION, itemId);
-  await setDoc(docRef, {
+  const payload = cleanPayload({
     itemId,
-    isPurchased,
+    isPurchased: !!isPurchased,
     updatedAt: new Date().toISOString(),
   });
+  await setDoc(docRef, payload);
 }
 
 /**

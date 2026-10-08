@@ -27,11 +27,30 @@ import {
 } from './services/firestoreService';
 import { Check } from 'lucide-react';
 
-const STORAGE_KEY_CURRENCY = 'japan_haul_currency_v4';
+const STORAGE_KEY_REQUESTS = 'japan_haul_requests_v5';
+const STORAGE_KEY_PURCHASED = 'japan_haul_purchased_v5';
+const STORAGE_KEY_CURRENCY = 'japan_haul_currency_v5';
 
 export default function App() {
-  const [requests, setRequests] = useState<ShoppingItemRequest[]>([]);
-  const [purchasedMap, setPurchasedMap] = useState<Record<string, boolean>>({});
+  const [requests, setRequests] = useState<ShoppingItemRequest[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_REQUESTS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+
+  const [purchasedMap, setPurchasedMap] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_PURCHASED);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {};
+  });
+
   const [sharedImportNotice, setSharedImportNotice] = useState<string | null>(null);
 
   // Selected currency
@@ -58,10 +77,16 @@ export default function App() {
   useEffect(() => {
     const unsubRequests = subscribeShoppingRequests((cloudItems) => {
       setRequests(cloudItems);
+      try {
+        localStorage.setItem(STORAGE_KEY_REQUESTS, JSON.stringify(cloudItems));
+      } catch {}
     });
 
     const unsubPurchased = subscribePurchasedStates((cloudMap) => {
       setPurchasedMap(cloudMap);
+      try {
+        localStorage.setItem(STORAGE_KEY_PURCHASED, JSON.stringify(cloudMap));
+      } catch {}
     });
 
     return () => {
@@ -160,6 +185,10 @@ export default function App() {
     if (window.confirm('Are you sure you want to clear all items from the shared list?')) {
       setRequests([]);
       setPurchasedMap({});
+      try {
+        localStorage.removeItem(STORAGE_KEY_REQUESTS);
+        localStorage.removeItem(STORAGE_KEY_PURCHASED);
+      } catch {}
       try {
         await clearAllShoppingRequestsFromCloud();
       } catch (err) {
