@@ -1,0 +1,68 @@
+import { StoreCategory, StoreCategoryInfo } from '../types';
+
+export const STORE_CATEGORIES: Record<StoreCategory, StoreCategoryInfo> = {
+  donki: {
+    id: 'donki',
+    name: 'Don Quijote',
+    japaneseName: 'ドン・キホーテ',
+    iconName: 'ShoppingBag',
+    color: 'amber',
+    taxFreeEligible: true,
+  },
+  drugstore: {
+    id: 'drugstore',
+    name: 'Pharmacy / Matsumoto Kiyoshi',
+    japaneseName: 'ドラッグストア (マツモトキヨシ)',
+    iconName: 'Cross',
+    color: 'emerald',
+    taxFreeEligible: true,
+  },
+  airport_dutyfree: {
+    id: 'airport_dutyfree',
+    name: 'Airport / Duty Free Souvenirs',
+    japaneseName: '空港・免税店お土産',
+    iconName: 'Plane',
+    color: 'blue',
+    taxFreeEligible: true,
+  },
+  conbini: {
+    id: 'conbini',
+    name: 'Convenience Store (7-Eleven/Lawson)',
+    japaneseName: 'コンビニ (セブン/ローソン)',
+    iconName: 'Coffee',
+    color: 'orange',
+    taxFreeEligible: false,
+  },
+  character_anime: {
+    id: 'character_anime',
+    name: 'Character / Anime / Nintendo',
+    japaneseName: 'ポケモン・ジブリ・アニメ店',
+    iconName: 'Sparkles',
+    color: 'purple',
+    taxFreeEligible: true,
+  },
+  supermarket: {
+    id: 'supermarket',
+    name: 'Japanese Supermarket',
+    japaneseName: 'スーパーマーケット',
+    iconName: 'Store',
+    color: 'rose',
+    taxFreeEligible: false,
+  },
+  department_store: {
+    id: 'department_store',
+    name: 'Department Store (Takashimaya/Isetan)',
+    japaneseName: '百貨店 (高島屋・伊勢丹)',
+    iconName: 'Building',
+    color: 'slate',
+    taxFreeEligible: true,
+  },
+  other: {
+    id: 'other',
+    name: 'General / Specialty Shop',
+    japaneseName: 'その他・専門店',
+    iconName: 'Compass',
+    color: 'stone',
+    taxFreeEligible: true,
+  },
+};

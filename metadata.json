@@ -1,0 +1,6 @@
+{
+  "name": "Japan Haul — Consolidated Shopping List & Buyer Hub",
+  "description": "Collaborative Japan shopping list aggregator: collect requests with quantities, requester names, and product photos, then consolidate identical items for the traveler to shop and download.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
