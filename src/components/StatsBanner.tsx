@@ -39,9 +39,9 @@ export const StatsBanner: React.FC<StatsBannerProps> = ({
               <span aria-hidden="true">·</span>
               <span>Buyer Shopping Hub</span>
               <span aria-hidden="true">·</span>
-              <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
-                <Sparkles className="w-3.5 h-3.5" />
-                Auto-merged duplicates
+              <span className="inline-flex items-center gap-1.5 text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Live Team Sync (Shared with colleagues)
               </span>
             </div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">

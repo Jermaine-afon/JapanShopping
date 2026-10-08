@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { ShoppingItemRequest, ConsolidatedItem, CurrencyCode } from './types';
 import { INITIAL_REQUESTS } from './data/initialData';
 import { consolidateRequests } from './utils/consolidation';
@@ -17,49 +17,12 @@ import { DownloadModal } from './components/DownloadModal';
 import { ClerkHelperModal } from './components/ClerkHelperModal';
 import { PrintSheet } from './components/PrintSheet';
 
-const STORAGE_KEY_REQUESTS = 'japan_haul_requests_v3';
-const STORAGE_KEY_PURCHASED = 'japan_haul_purchased_v3';
 const STORAGE_KEY_CURRENCY = 'japan_haul_currency_v3';
 
 export default function App() {
-  // Clear any legacy demo data from previous sessions
-  useEffect(() => {
-    try {
-      localStorage.removeItem('japan_haul_requests_v1');
-      localStorage.removeItem('japan_haul_requests_v2');
-      localStorage.removeItem('japan_haul_purchased_v1');
-      localStorage.removeItem('japan_haul_purchased_v2');
-    } catch {}
-  }, []);
-
-  // Initialize with an empty list by default
-  const [requests, setRequests] = useState<ShoppingItemRequest[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_REQUESTS);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed;
-        }
-      }
-    } catch (e) {
-      console.error('Failed to parse saved requests:', e);
-    }
-    return []; // Empty list
-  });
-
-  // Track purchased status per merged product id
-  const [purchasedMap, setPurchasedMap] = useState<Record<string, boolean>>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_PURCHASED);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {
-      console.error('Failed to parse purchased state:', e);
-    }
-    return {};
-  });
+  const [requests, setRequests] = useState<ShoppingItemRequest[]>([]);
+  const [purchasedMap, setPurchasedMap] = useState<Record<string, boolean>>({});
+  const [isLiveConnected, setIsLiveConnected] = useState(false);
 
   // Selected currency
   const [selectedCurrency, setSelectedCurrency] = useState<CurrencyCode>(() => {
@@ -80,22 +43,40 @@ export default function App() {
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const [clerkItem, setClerkItem] = useState<ConsolidatedItem | null>(null);
 
-  // Save changes to localStorage
-  useEffect(() => {
+  // Fetch from shared backend server
+  const fetchSharedData = useCallback(async () => {
     try {
-      localStorage.setItem(STORAGE_KEY_REQUESTS, JSON.stringify(requests));
-    } catch (e) {
-      console.error('Failed to save requests:', e);
-    }
-  }, [requests]);
+      const [reqRes, purRes] = await Promise.all([
+        fetch('/api/requests'),
+        fetch('/api/purchased'),
+      ]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_PURCHASED, JSON.stringify(purchasedMap));
-    } catch (e) {
-      console.error('Failed to save purchased states:', e);
+      if (reqRes.ok) {
+        const data = await reqRes.json();
+        setRequests(data);
+        setIsLiveConnected(true);
+      }
+      if (purRes.ok) {
+        const purData = await purRes.json();
+        setPurchasedMap(purData);
+      }
+    } catch (err) {
+      console.warn('Backend sync notice:', err);
     }
-  }, [purchasedMap]);
+  }, []);
+
+  // Poll shared server every 3s and when tab gains focus so all colleagues stay in sync
+  useEffect(() => {
+    fetchSharedData();
+    const interval = setInterval(fetchSharedData, 3000);
+    const onFocus = () => fetchSharedData();
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [fetchSharedData]);
 
   useEffect(() => {
     try {
@@ -125,41 +106,83 @@ export default function App() {
     return Array.from(new Set(requests.map((r) => r.requesterName))).sort();
   }, [requests]);
 
-  // Handlers
-  const handleTogglePurchased = (itemId: string) => {
+  // Handlers for shared operations
+  const handleTogglePurchased = async (itemId: string) => {
+    const nextVal = !purchasedMap[itemId];
     setPurchasedMap((prev) => ({
       ...prev,
-      [itemId]: !prev[itemId],
+      [itemId]: nextVal,
     }));
-  };
 
-  const handleAddRequest = (newReqData: Omit<ShoppingItemRequest, 'id' | 'createdAt'>) => {
-    const newRequest: ShoppingItemRequest = {
-      ...newReqData,
-      id: `req-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      createdAt: new Date().toISOString(),
-    };
-    setRequests((prev) => [newRequest, ...prev]);
-  };
-
-  const handleDeleteRequest = (requestId: string) => {
-    setRequests((prev) => prev.filter((r) => r.id !== requestId));
-  };
-
-  const handleClearAll = () => {
-    if (window.confirm('Are you sure you want to clear all items from the list?')) {
-      setRequests([]);
-      setPurchasedMap({});
-      try {
-        localStorage.removeItem(STORAGE_KEY_REQUESTS);
-        localStorage.removeItem(STORAGE_KEY_PURCHASED);
-      } catch {}
+    try {
+      await fetch(`/api/purchased/${encodeURIComponent(itemId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isPurchased: nextVal }),
+      });
+    } catch (err) {
+      console.error('Failed to sync purchased status to server:', err);
     }
   };
 
-  const handleLoadSampleData = () => {
-    setRequests(INITIAL_REQUESTS);
-    setPurchasedMap({});
+  const handleAddRequest = async (newReqData: Omit<ShoppingItemRequest, 'id' | 'createdAt'>) => {
+    const tempId = `req-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const newRequest: ShoppingItemRequest = {
+      ...newReqData,
+      id: tempId,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Optimistic UI update
+    setRequests((prev) => [newRequest, ...prev]);
+
+    try {
+      const res = await fetch('/api/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newRequest),
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setRequests((prev) => prev.map((item) => (item.id === tempId ? saved : item)));
+      }
+    } catch (err) {
+      console.error('Failed to save to shared backend:', err);
+    }
+  };
+
+  const handleDeleteRequest = async (requestId: string) => {
+    setRequests((prev) => prev.filter((r) => r.id !== requestId));
+    try {
+      await fetch(`/api/requests/${encodeURIComponent(requestId)}`, {
+        method: 'DELETE',
+      });
+    } catch (err) {
+      console.error('Failed to delete on shared backend:', err);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (window.confirm('Are you sure you want to clear all items from the shared list?')) {
+      setRequests([]);
+      setPurchasedMap({});
+      try {
+        await fetch('/api/requests', { method: 'DELETE' });
+      } catch (err) {
+        console.error('Failed to clear list on shared backend:', err);
+      }
+    }
+  };
+
+  const handleLoadSampleData = async () => {
+    for (const item of INITIAL_REQUESTS) {
+      await fetch('/api/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item),
+      });
+    }
+    fetchSharedData();
   };
 
   const handleTriggerPrint = () => {
@@ -226,7 +249,10 @@ export default function App() {
           <div className="flex items-center gap-2">
             <span className="font-semibold text-slate-700">Japan Haul</span>
             <span>·</span>
-            <span>Consolidated Travel Shopping Concierge</span>
+            <span className="inline-flex items-center gap-1.5 text-emerald-600 font-medium">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Shared Live Server Synced
+            </span>
           </div>
           <div className="flex items-center gap-4">
             {consolidatedItems.length > 0 && (
