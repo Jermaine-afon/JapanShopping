@@ -1,0 +1,14 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Shopping requests submitted by colleagues
+    match /shopping_requests/{requestId} {
+      allow read, create, update, delete: if true;
+    }
+
+    // Consolidated purchase toggle states
+    match /purchased_states/{itemId} {
+      allow read, create, update, delete: if true;
+    }
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "entities": {
+    "ShoppingRequest": {
+      "title": "Shopping Request",
+      "description": "An individual shopping item requested by a user for Japan travel.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique request identifier"
+        },
+        "productName": {
+          "type": "string",
+          "description": "Name of the product to buy"
+        },
+        "quantity": {
+          "type": "number",
+          "description": "Quantity to buy"
+        },
+        "requesterName": {
+          "type": "string",
+          "description": "Name of the person requesting the item"
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "URL or preview of the product image"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional remarks or specifications"
+        },
+        "category": {
+          "type": "string",
+          "description": "Store category"
+        },
+        "estimatedPriceJpy": {
+          "type": "number",
+          "description": "Estimated price in JPY"
+        },
+        "priority": {
+          "type": "string",
+          "description": "Purchase priority level"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of creation"
+        }
+      },
+      "required": ["productName", "quantity", "requesterName"]
+    },
+    "PurchasedState": {
+      "title": "Purchased State",
+      "description": "Status tracking whether a consolidated product has been bought.",
+      "type": "object",
+      "properties": {
+        "itemId": {
+          "type": "string",
+          "description": "Canonical consolidated product id"
+        },
+        "isPurchased": {
+          "type": "boolean",
+          "description": "Whether the item has been purchased"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp of update"
+        }
+      },
+      "required": ["itemId", "isPurchased"]
+    }
+  },
+  "firestore": {
+    "/shopping_requests/{requestId}": {
+      "schema": {
+        "$ref": "ShoppingRequest"
+      },
+      "description": "Collection of all submitted shopping requests for Japan."
+    },
+    "/purchased_states/{itemId}": {
+      "schema": {
+        "$ref": "PurchasedState"
+      },
+      "description": "Collection of item purchased states."
+    }
+  }
+}

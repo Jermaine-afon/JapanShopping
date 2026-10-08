@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ShoppingItemRequest, ConsolidatedItem, CurrencyCode } from './types';
 import { INITIAL_REQUESTS } from './data/initialData';
 import { consolidateRequests } from './utils/consolidation';
@@ -17,32 +17,21 @@ import { DownloadModal } from './components/DownloadModal';
 import { ClerkHelperModal } from './components/ClerkHelperModal';
 import { PrintSheet } from './components/PrintSheet';
 import { ShareModal, parseSharedDataFromUrl } from './components/ShareModal';
+import {
+  subscribeShoppingRequests,
+  subscribePurchasedStates,
+  addShoppingRequestToCloud,
+  deleteShoppingRequestFromCloud,
+  setPurchasedStateInCloud,
+  clearAllShoppingRequestsFromCloud,
+} from './services/firestoreService';
 import { Check } from 'lucide-react';
 
-const STORAGE_KEY_REQUESTS = 'japan_haul_requests_v4';
-const STORAGE_KEY_PURCHASED = 'japan_haul_purchased_v4';
 const STORAGE_KEY_CURRENCY = 'japan_haul_currency_v4';
 
 export default function App() {
-  const [requests, setRequests] = useState<ShoppingItemRequest[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_REQUESTS);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch {}
-    return [];
-  });
-
-  const [purchasedMap, setPurchasedMap] = useState<Record<string, boolean>>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_PURCHASED);
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return {};
-  });
-
+  const [requests, setRequests] = useState<ShoppingItemRequest[]>([]);
+  const [purchasedMap, setPurchasedMap] = useState<Record<string, boolean>>({});
   const [sharedImportNotice, setSharedImportNotice] = useState<string | null>(null);
 
   // Selected currency
@@ -65,69 +54,36 @@ export default function App() {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [clerkItem, setClerkItem] = useState<ConsolidatedItem | null>(null);
 
-  // 1. Check if opened via a Share Link from a colleague!
+  // Real-time synchronization with Cloud Firestore
+  useEffect(() => {
+    const unsubRequests = subscribeShoppingRequests((cloudItems) => {
+      setRequests(cloudItems);
+    });
+
+    const unsubPurchased = subscribePurchasedStates((cloudMap) => {
+      setPurchasedMap(cloudMap);
+    });
+
+    return () => {
+      unsubRequests();
+      unsubPurchased();
+    };
+  }, []);
+
+  // Check if opened via a Share Link from a colleague
   useEffect(() => {
     const sharedData = parseSharedDataFromUrl();
     if (sharedData && sharedData.length > 0) {
-      setRequests((prev) => {
-        // Merge without exact duplicates
-        const existingNames = new Set(prev.map((p) => `${p.productName}__${p.requesterName}`));
-        const newOnes = sharedData.filter(
-          (s) => !existingNames.has(`${s.productName}__${s.requesterName}`)
-        );
-        const merged = [...newOnes, ...prev];
-        return merged;
+      // Sync shared items into the cloud database so all colleagues get them
+      sharedData.forEach((item) => {
+        addShoppingRequestToCloud(item);
       });
 
-      setSharedImportNotice(`🎉 Successfully loaded ${sharedData.length} items from your colleague's link!`);
-      // Clean up URL hash cleanly without reload
+      setSharedImportNotice(`🎉 Successfully loaded ${sharedData.length} items from your colleague's link into the cloud!`);
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
       setTimeout(() => setSharedImportNotice(null), 5000);
     }
   }, []);
-
-  // 2. Fetch from shared backend server if running
-  const fetchSharedData = useCallback(async () => {
-    try {
-      const [reqRes, purRes] = await Promise.all([
-        fetch('/api/requests'),
-        fetch('/api/purchased'),
-      ]);
-
-      if (reqRes.ok) {
-        const data = await reqRes.json();
-        if (Array.isArray(data) && data.length > 0) {
-          setRequests(data);
-        }
-      }
-      if (purRes.ok) {
-        const purData = await purRes.json();
-        setPurchasedMap(purData);
-      }
-    } catch {
-      // Local fallback
-    }
-  }, []);
-
-  // Sync with server if available
-  useEffect(() => {
-    fetchSharedData();
-    const interval = setInterval(fetchSharedData, 4000);
-    return () => clearInterval(interval);
-  }, [fetchSharedData]);
-
-  // Persist locally
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_REQUESTS, JSON.stringify(requests));
-    } catch {}
-  }, [requests]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_PURCHASED, JSON.stringify(purchasedMap));
-    } catch {}
-  }, [purchasedMap]);
 
   useEffect(() => {
     try {
@@ -157,21 +113,20 @@ export default function App() {
     return Array.from(new Set(requests.map((r) => r.requesterName))).sort();
   }, [requests]);
 
-  // Handlers
+  // Handlers connected to Cloud Firestore
   const handleTogglePurchased = async (itemId: string) => {
     const nextVal = !purchasedMap[itemId];
+    // Optimistic local update
     setPurchasedMap((prev) => ({
       ...prev,
       [itemId]: nextVal,
     }));
 
     try {
-      await fetch(`/api/purchased/${encodeURIComponent(itemId)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isPurchased: nextVal }),
-      });
-    } catch {}
+      await setPurchasedStateInCloud(itemId, nextVal);
+    } catch (err) {
+      console.error('Failed to update purchased state in cloud:', err);
+    }
   };
 
   const handleAddRequest = async (newReqData: Omit<ShoppingItemRequest, 'id' | 'createdAt'>) => {
@@ -182,51 +137,45 @@ export default function App() {
       createdAt: new Date().toISOString(),
     };
 
+    // Optimistic local update
     setRequests((prev) => [newRequest, ...prev]);
 
     try {
-      const res = await fetch('/api/requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newRequest),
-      });
-      if (res.ok) {
-        const saved = await res.json();
-        setRequests((prev) => prev.map((item) => (item.id === tempId ? saved : item)));
-      }
-    } catch {}
+      await addShoppingRequestToCloud(newRequest);
+    } catch (err) {
+      console.error('Failed to save to cloud database:', err);
+    }
   };
 
   const handleDeleteRequest = async (requestId: string) => {
     setRequests((prev) => prev.filter((r) => r.id !== requestId));
     try {
-      await fetch(`/api/requests/${encodeURIComponent(requestId)}`, {
-        method: 'DELETE',
-      });
-    } catch {}
+      await deleteShoppingRequestFromCloud(requestId);
+    } catch (err) {
+      console.error('Failed to delete from cloud database:', err);
+    }
   };
 
   const handleClearAll = async () => {
-    if (window.confirm('Are you sure you want to clear all items from the list?')) {
+    if (window.confirm('Are you sure you want to clear all items from the shared list?')) {
       setRequests([]);
       setPurchasedMap({});
       try {
-        await fetch('/api/requests', { method: 'DELETE' });
-      } catch {}
+        await clearAllShoppingRequestsFromCloud();
+      } catch (err) {
+        console.error('Failed to clear cloud database:', err);
+      }
     }
   };
 
   const handleLoadSampleData = async () => {
-    setRequests(INITIAL_REQUESTS);
     try {
       for (const item of INITIAL_REQUESTS) {
-        await fetch('/api/requests', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(item),
-        });
+        await addShoppingRequestToCloud(item);
       }
-    } catch {}
+    } catch (err) {
+      console.error('Failed to load sample data to cloud:', err);
+    }
   };
 
   const handleTriggerPrint = () => {
@@ -302,12 +251,10 @@ export default function App() {
           <div className="flex items-center gap-2">
             <span className="font-semibold text-slate-700">Japan Haul</span>
             <span>·</span>
-            <button
-              onClick={() => setIsShareModalOpen(true)}
-              className="text-rose-600 font-semibold hover:underline cursor-pointer"
-            >
-              Share with Colleagues
-            </button>
+            <span className="inline-flex items-center gap-1.5 text-emerald-600 font-medium">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Live Cloud Database Connected
+            </span>
           </div>
           <div className="flex items-center gap-4">
             {consolidatedItems.length > 0 && (
